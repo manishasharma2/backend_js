@@ -17,7 +17,7 @@ const registerUser = asyncHandler(async (req,res) =>{
     // return response
 
     const {fullname,email,username,password} = req.body
-    console.log("email id: ",email,password,fullname,username);
+    // console.log("email id: ",email,password,fullname,username);
 
     // if(fullname === ''){
     //     throw new ApiError(400,"fullname is required")    
@@ -64,14 +64,14 @@ const registerUser = asyncHandler(async (req,res) =>{
     })
 
     const createdUser =  await User.findById(user._id).select(
-        "-password refreshToken"
+        "-password -refreshToken"
     )
     
     if(!createdUser){
         throw new ApiError(500, "Something went wrong while registering a user")
     }
 
-    return res.start(201).json(
+    return res.status(201).json(
         new ApiResponse(200,createdUser,"User registered successfully")
     )
 
