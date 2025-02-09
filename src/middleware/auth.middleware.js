@@ -6,7 +6,9 @@ import {User} from '../models/user.model.js'
 // This middleware will verify that user h ya nhi?
 export const verifyJWT = asyncHandler(async (req, _, next) =>{
     try {
+        
         const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "")
+        console.log("Token found:", token);
         if(!token){
             throw new ApiError(401, "Unauthorized request.. token nhi mila hme");
         }   

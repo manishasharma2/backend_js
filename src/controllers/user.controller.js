@@ -4,7 +4,7 @@ import {User} from '../models/user.model.js'
 import {uploadOnCloudinary} from '../utils/cloudinary.js'
 import {ApiResponse} from '../utils/ApiResponse.js'
 import jwt from 'jsonwebtoken'
-
+import mongoose from 'mongoose'
 
 const registerUser = asyncHandler(async (req,res) =>{
 
@@ -146,13 +146,38 @@ const loginUser = asyncHandler(async(req,res) =>{
     )
 })
 
-const logoutUser = asyncHandler(async(req,res) =>{
-    // clear cookies and refresh tokens
+// const logoutUser = asyncHandler(async(req,res) =>{
+//     // clear cookies and refresh tokens
+//     await User.findByIdAndUpdate(
+//         req.user._id,
+//         {
+//             $set: {
+//                 refreshToken: undefined
+//             }
+//         },
+//         {
+//             new: true
+//         }
+//     )
+
+//     const options = {
+//         httpOnly: true,
+//         secure : true
+//     }
+
+//     return res
+//     .status(200)
+//     .clearCookie("accesssToken",options)
+//     .clearCookie("refreshToken",options)
+//     .json(new ApiResponse(200,{},"User logged out successfully :)"))
+// }) // now logout is not working will work on this functionality
+
+const logoutUser = asyncHandler(async(req, res) => {
     await User.findByIdAndUpdate(
         req.user._id,
         {
-            $set: {
-                refreshToken: undefined
+            $unset: {
+                refreshToken: 1 // this removes the field from document
             }
         },
         {
@@ -162,16 +187,15 @@ const logoutUser = asyncHandler(async(req,res) =>{
 
     const options = {
         httpOnly: true,
-        secure : true
+        secure: true
     }
 
     return res
     .status(200)
-    .clearCookie("accesssToken",options)
-    .clearCookie("refreshToken",options)
-    .json(new ApiResponse(200,{},"User logged out successfully :)"))
-}) // now logout is not working will work on this functionality
-
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "User logged Out"))
+})
 const refreshAccessToken = asyncHandler(async (req, res) =>{
     const incomingRefreshToken =  req.cookies.refreshToken || req.body.refreshToken
     if(!incomingRefreshToken){
@@ -219,6 +243,8 @@ const changeCurrentPassword = asyncHandler( async (req,res) =>{
         throw new ApiError(401,"new password and confirm password are not same")
     }
     const user =  await User.findById(req.user?._id)
+    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
+
     await user.isPasswordCorrect(oldPassword)
 
     if(!isPasswordCorrect){
@@ -275,7 +301,7 @@ const updateUserAvatar = asyncHandler(async (req,res) =>{
         req.user?._id,
         {
             $set:{
-                avatar = avatar.url
+                avatar: avatar.url
             }
         },
         {new: true}
@@ -301,7 +327,7 @@ const updateUserCoverImage = asyncHandler(async (req,res) =>{
         req.user?._id,
         {
             $set:{
-                coverImage = coverImage.url
+                coverImage : coverImage.url
             }
         },
         {new: true}
@@ -316,43 +342,46 @@ const updateUserCoverImage = asyncHandler(async (req,res) =>{
 
 const getUserChannelProfile = asyncHandler(async (req,res) =>{
 
-    const {username} = req.params
+    const {username} = req.params /// url se username nikalenge
     if(!username?.trim()){
         throw new ApiError(400,"username is missing")
     }
+
     const channel =  await User.aggregate([
         {
             $match:{
-                username?.toLowerCase()
+                username: username?.toLowerCase()
             }
         },
         {
-            $lookup: {
-                from:"Subscriptions",
+            $lookup:{
+                from: "subscriptions",
                 localField: "_id",
-                foreignFiels: "channel",
-                as: "subscrubers"
+                foreignFiels:"channel",
+                as: "subscribers"
             }
         },
         {
-            $lookup: {
-                from:"Subscriptions",
+            $lookup:{
+                from:"subscriptions",
                 localField: "_id",
                 foreignFiels: "subscriber",
-                as: "subscribedToz"
+                as: "subscribedTo"
             }
         },
         {
-            $addFields: {
+            $addFields:{
                 subscribersCount: {
-                    $size:"$subscribers"
+                    $size: "$subscriber",
                 },
                 channelsSubscribedToCount:{
-                    $size: "$subscribedTo"
+                    $size: "$subcribedTo"
                 },
-                isSubscribed:{
-                    $cond: {
-                        if: {$in:[req.user?._id, "$subscribers.subscriber"]},
+                isSubscribed: {
+                    $cond:{
+                        if:{
+                            $in:[req.user?._id, "$subscribers.subscriber"]
+                        },
                         then: true,
                         else: false
                     }
@@ -360,18 +389,81 @@ const getUserChannelProfile = asyncHandler(async (req,res) =>{
             }
         },
         {
-            $project: {
+            $project:{
                 fullname: 1,
                 username: 1,
+                email: 1,
                 subscribersCount: 1,
-                channelsSubscribedToCount : 1,
-                isSubscribed: 1,
-                avatar:1,
+                channelsSubscribedToCount: 1,
+                avatar : 1,
                 coverImage: 1,
+                isSubscribed: 1
             }
         }
     ])
+
+    if(!channel?.length){
+        throw new ApiError(400, "chaneel does not exists")
+    }
+    
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, chaneel[0],"User channel fetched successfully")
+    )
 })
+
+const getUserWatchHistory = asyncHandler(async (req,res)=>{
+    
+    const user = await User.aggregate([
+        {
+            $match:{
+                _id: new mongoose.Types.ObjectId(req.user._id)
+            }   
+        },
+        {
+            $lookup: {
+                from : "videos",
+                localField: "watchHistory",
+                foreignFiels: "_id",
+                as: "watchHistory",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignFiels: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project:{
+                                        fullname: 1,
+                                        username: 1,
+                                        avatar:1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields: {
+                            owner: {
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res
+    .status(200)
+    .json(
+        new ApiResponse(200, user[0].watchHistory, "User watch history fetched successfully")
+    )
+})
+
 export {
     registerUser,
     loginUser,
@@ -381,5 +473,7 @@ export {
     getCurrentUser,
     updateAccountDetials,
     updateUserAvatar,
-    updateUserCoverImage
+    updateUserCoverImage,
+    getUserChannelProfile,
+    getUserWatchHistory
 }
