@@ -1,0 +1,16 @@
+REST API - we will store json data
+
+get/users - list all users will render HTML doc
+get/api/users - list all the users json data
+
+get/user/1 - get the user with id 1
+get/user/2 - get the user with id 2
+
+dynamic path parameter
+GET/api/users/:id here : shows dynamic value
+
+post/users - create new user
+browsers by default get request karte h
+patch/user/1 - edit the user withe Id 1
+
+delete/users/1- delete the user with id 1
